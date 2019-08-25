@@ -1,33 +1,38 @@
 function result = Update_SUE_DF()
 
-% ### ±à¼­ÈË£ºÕÅÑÅÙ» ###
-% ### ×îºó±à¼­Ê±¼ä£º2018.06.22 ###
-% ´úÂë×÷ÓÃ£º
-% ¶Ô¶«·½Ö¤È¯¡¶Òµ¼¨³¬Ô¤ÆÚÀàÒò×Ó¡·ÕâÆªÑĞ±¨½øĞĞÖØÏÖ£¬¼ÆËãÉÏÊĞ¹«Ë¾µÄÔ¤ÆÚÍâ¾»ÀûÈóÊı¾İ(SUE0)£¬Í¨¹ı¹«Ë¾µÄ»Ø²âÆ½Ì¨»Ø²âºó·¢ÏÖ£¬Òµ¼¨³¬Ô¤ÆÚÀàÒò×ÓÓĞºÜºÃµÄÑ¡¹ÉĞ§¹û£¬¿ÉÒÔ×÷ÎªalphaÒò×ÓÄÉÈë¶àÒò×ÓÑ¡¹ÉÌåÏµ
-% Ö÷Òª½â¾öµÄÎÊÌâÊÇ²ÆÎñÊı¾İÔÚÊ±¼äÖáÉÏµÄ¶ÔÆëÎÊÌâ¡£A¹ÉµÄÉÏÊĞ¹«Ë¾ÓĞËÄ¸ö±¨¸æÆÚ£¨Ò»¼¾±¨£¬¶ş¼¾±¨£¬Èı¼¾±¨£¬Äê±¨£©£¬ÔÚ²ÆÎñ±¨±í·¢²¼ºóÉÏÊĞ¹«Ë¾ÒÀ¾É»á¶ÔÒÑ·¢²¼µÄ±¨±í½øĞĞµ÷Õû¸üÕı£¬ÈçºÎ±£Ö¤Êı¾İÊÇµ±ÆÚ¿ÉµÃ£¬²»ÒıÈëÎ´À´ĞÅÏ¢ÊÇ¹Ø¼ü
+% ### Editor: Yaqian Zhang ###
+% ### Last edited: 2018.06.22 ###
+% ### Summer Intern Project ###
+
+% Reproduce the research report of Oriental Securities' "Performance Exceeded Expectations Factor" and calculate the expected net profit data of listed companies (SUE0). 
+% After backtesting though our fund's backtest platform, I found that the performance exceeds expectations factor has great stock picking effect, and it can be incorporated into our fund's multi-factor stock picking system as an alpha factor.
+% The main problem solved here is the alignment of financial data on the timeline. There are four reporting periods for A-share listed companies (one quarterly report, two quarterly reports, three quarterly reports, and annual reports). 
+% After the financial statements are issued, the listed companies will still adjust and correct their published statements. The key is to ensure that the data is available in the current period, and no future information is included
 
 w = windmatlab;
-% ´Ó¹«Ë¾Òò×Ó¿âÖĞÌáÈ¡ÒÔÏÂÊı¾İ£ºTradedate¡¢½»Ò×ÈÕÆÚµÄÊıÖµĞÍ¡¢¹ÉÆ±´úÂëµÄÊıÖµĞÍ
-load ¡¾Update¡¿FactorStore.mat Tradedate Tradedatenum Stocknum;
+% Extract the following data from our company's factor library: Tradedate, transaction date (numeric type), stock code (numeric type)
+load ã€Updateã€‘FactorStore.mat Tradedate Tradedatenum Stocknum;
 
-% ½«¹ÉÆ±´úÂëÅÅĞò£¬²¢ÖÆ×÷ÉÏË¾¹«Ë¾±¨¸æÆÚÊ±¼ä±íquarter_table£¬±ãÓÚÖ®ºóµÄÊı¾İ²éÕÒ
+% Sort the stock code and create a quarter_table for the company's reporting period, which is convenient for us to do subsequent data searches.
 Stocknum = sort(Stocknum);
 quarter_table = w.tdays(Tradedate{1},Tradedate{end},'Days=Alldays;Period=Q');
 quarter_table = cell2mat(cellfun(@(x) str2double(datestr(x,'yyyymmdd')),quarter_table,'UniformOutput',false));
 
-% µ¼ÈëwindÖĞÌáÈ¡µÄNet profitÊı¾İ£¬ÖÆ×÷³ö±í¸ñtmp_np£¬ÆäÖĞµÚÒ»ÁĞÎª¹ÉÆ±´úÂë£¬µÚ¶şÁĞÎªÉÏÊĞ¹«Ë¾²Æ±¨µÄ±¨¸æÆÚ(¸ñÊ½ÎªÊıÖµĞÍ£¬ÀıÈç:'2015/12/31'Îª20151231)£¬µÚÈıÁĞÎªÉÏÊĞ¹«Ë¾²Æ±¨µÄ¾ßÌå·¢²¼ÈÕÆÚ(¸ñÊ½Í¬ÉÏ)£¬µÚËÄÁĞÎª¾»ÀûÈó
+% Import the Net profit data extracted from the Wind and create the table tmp_np. The first column is the stock code, 
+% and the second column is the reporting period of the listed company's financial report (the format is numeric, for example: '2015/12/31' is 20151231)
+% The third column is the specific release date of the listed company's financial report (the format is the same as above), and the fourth column is the net profit.
 fd = fopen('NetProfit.txt');
 dat = textscan(fd, '%f%f%f%s','headerlines',1); 
 fclose(fd);
 tmp_np = table(dat{1, 1}, dat{1, 2}, dat{1, 3}, str2double(dat{1, 4}), 'VariableNames', {'stk', 'rdate', 'issuedate', 'NP'});
-% ¶Ô¹ÉÆ±´úÂë¡¢±¨¸æÆÚÊ±¼ä¡¢·¢²¼ÈÕÆÚÏÈºó½øĞĞÅÅĞò
+% Sort stock code, reporting period, and release date
 tmp_np = sortrows(tmp_np, 1:3);
 tmp_np = tmp_np(table2array(tmp_np(:, 1)) > 0, :); 
 tmp_np = tmp_np(table2array(tmp_np(:,2)) > 20031231,:);
 tmp_np = table2array(tmp_np);
 uniquestock = unique(tmp_np(:,1));
 
-% Í¨¹ı²î·Ö¼ÆËãµ¥¼¾¶È¾»ÀûÈóÊı¾İseasonal_np
+% Calculate single-quarter net profit data "seasonal_np" by differential calculations 
 seasonal_np = nan(size(tmp_np));
 count = 0;
 for id1 = 1:length(uniquestock)
@@ -38,7 +43,7 @@ for id1 = 1:length(uniquestock)
         tmpdate = mod(tmpdata(id2,2),10000);
         if  tmpdate ~= 331
             idx = find(quarter_table == tmpdata(id2,2))-1;
-            % È·±£Ê¹ÓÃµÄÉÏÒ»ÆÚµÄ¾»ÀûÈóÊı¾İÊÇµ±ÆÚ¿ÉµÃ£¬±ÜÃâÒıÈëÎ´À´ĞÅÏ¢
+            % Ensure that the previous period's net profit data is available in the current period, avoiding the future information
             idj = find(tmpdata(:,2) == quarter_table(idx) & tmpdata(:,3) <= tmpdata(id2,3),1,'last');
             if ~isempty(idj)
                 tmpdata2(id2,4) = tmpdata(id2,4) - tmpdata(idj,4);
@@ -62,19 +67,20 @@ allstock(delete_index) = [];
 allissuedate(delete_index) = [];
 allreportdate(delete_index) = [];
 
-% »ñÈ¡Ìî³äÎ»ÖÃ±í:Numeric
+% è·å–å¡«å……ä½ç½®è¡¨:Numeric
 Numeric = nan(length(Tradedatenum),length(Stocknum));
 for id1 = 1:length(Stocknum)
     idx = find(allstock==Stocknum(id1));
     for id2 = 1:length(idx)
         tmpbegin_id=find(Tradedatenum>=allissuedate(idx(id2)),1)+1;
-        % NumericÖĞÃ¿´Î³öÏÖĞÂµÄ±¨¸æÆÚ¸²¸Ç£¬ÔòÈ¡µÚÒ»ĞĞÎªÕı£¬ÆäÓàÎª¸º£¬·½±ãSUE_DFµÄ¼ÆËã£¬¼õÉÙ³ÌĞòÔËËãÁ¿
+        % Every time a new report period coverage occurs, make the first row becomes positive and let the rest become negative, 
+        % This method can facilitate the calculation of SUE_DF and reduce the time for program operations.
         Numeric(tmpbegin_id:end,id1) = -allreportdate(idx(id2));
         Numeric(tmpbegin_id,id1) = allreportdate(idx(id2));
     end
 end
 
-% Öğµã¼ÆËãSUE_DF
+% Calculate SUE_DF point by point
 SUE_DF = nan(size(Numeric));
 for id1 = 1:size(Numeric,2)
     tmpdata = seasonal_np(seasonal_np(:,1)==Stocknum(id1),:);
@@ -92,7 +98,7 @@ for id1 = 1:size(Numeric,2)
                 tmpid = cond1 & cond2;
                 tmpsubdata = tmpdata(tmpid,:);
                 
-                % »ñÈ¡×îĞÂµÄ¹ıÈ¥12ÆÚµ¥¼¾¶È¾»ÀûÈóÊı¾İ
+                % è·å–æœ€æ–°çš„è¿‡å»12æœŸå•å­£åº¦å‡€åˆ©æ¶¦æ•°æ®
                 tmpseason = nan(12,1);
                 for i = 1:length(tmpdates)
                     tmpid = find(tmpsubdata(:,2)==tmpdates(i),1,'last');
@@ -114,7 +120,7 @@ for id1 = 1:size(Numeric,2)
     end
 end
 
-% Ìî³äSUE_DFÊı¾İ
+% filling SUE_DF data
 for id1 = 1:length(Stocknum)
     for id2 = 1:length(Tradedatenum)
         if ~isnan(SUE_DF(id2,id1)) && id2<length(Tradedatenum)
