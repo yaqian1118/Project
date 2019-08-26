@@ -1,0 +1,113 @@
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np 
+import seaborn as sns
+train_df = pd.read_csv('/Users/yaqianyuki/Desktop/titanic/train.csv', header=0)
+
+test_df = pd.read_csv('/Users/yaqianyuki/Desktop/titanic/test.csv', header=0)
+test_df.head()
+
+frames = [train_df,test_df]
+total_df = pd.concat(frames)
+total_df['FamilySize'] = total_df['SibSp'] + total_df['Parch']
+train_df['FamilySize'] = train_df['SibSp'] + train_df['Parch']
+
+
+sns.countplot(x = 'Pclass', hue = "Survived", data = train_df)
+sns.countplot(x = 'Sex', hue = "Survived", data = train_df)
+sns.countplot(x = 'Age', hue = "Survived", data = train_df)
+sns.violinplot(x='Survived',y='Age',data=train_df)
+
+sns.countplot(x = 'FamilySize', hue = "Survived", data = train_df)
+total_df['FamilySize'][total_df.FamilySize==0] = 0
+total_df['FamilySize'][total_df.FamilySize>0] = 1 
+# Survived rate increases as Familysize raise from 0 to 1 
+
+sns.violinplot(x='Survived',y='Fare',data=train_df)
+# convert the nan value in Fare column to the mean value
+total_df.loc[np.isnan(total_df['Fare']),'Fare']= np.mean(total_df['Fare'])
+np.where(np.isnan(total_df['Fare']))
+
+total_df['Fare'][total_df.Fare<=20] = 0
+total_df['Fare'][total_df.Fare>20] = 1
+# survived rate increases when fare price increase, use 20 as a gap 
+
+
+# change catagorical features to dummies  
+total_df = pd.get_dummies(data = total_df, columns = ['Pclass','Sex'])
+
+
+
+# Instead of using the mean to fill the vacant value in 'Age' column, I would use random forest to predict the vacant value
+total_df.drop(['PassengerId', 'Name', 'SibSp' ,'Parch','Ticket', 'Cabin','Embarked','Survived'],inplace=True, axis=1)
+total_df['Age'][(total_df.Age<12)&(total_df.Age.notnull())] = 0
+total_df['Age'][(total_df.Age>=12)&(total_df.Age.notnull())] = 1
+
+train_y_age = total_df['Age'][total_df.Age.notnull()].values
+train_x_age = total_df[total_df.Age.notnull()].drop(['Age'],axis=1).values
+test_x_age = total_df[total_df.Age.isnull()].drop(['Age'],axis=1).values
+
+from sklearn.ensemble import RandomForestClassifier
+model_rf_age = RandomForestClassifier().fit(train_x_age,train_y_age)
+total_df['Age'][total_df.Age.isnull()] = model_rf_age.predict(test_x_age)
+total_df.info()
+
+
+train_X = total_df.loc[:, ['Age','Fare','FamilySize','Pclass_1','Pclass_2','Pclass_3','Sex_female','Sex_male']]
+train_X = train_X.iloc[0:891,:]
+train_X.head()
+
+train_y = train_df['Survived']
+train_y.head()
+
+test_X = total_df.loc[:, ['Age','Fare','FamilySize','Pclass_1','Pclass_2','Pclass_3','Sex_female','Sex_male']]
+test_X = test_X.iloc[891:1310,:]
+test_X.head()
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import validation_curve
+from sklearn.metrics import roc_auc_score
+
+param_test1 = {'n_estimators':range(10,301,10)}
+gsearch1 = GridSearchCV(estimator = RandomForestClassifier(min_samples_split=100,
+                                  min_samples_leaf=20,max_depth=8,max_features='sqrt' ,random_state=10), 
+                       param_grid = param_test1, scoring='roc_auc',cv=5)
+gsearch1.fit(train_X,train_y)
+print(gsearch1.best_params_, gsearch1.best_score_)
+
+# {'n_estimators': 70} 0.8480832518844506
+
+param_test2 = {'max_depth':range(2,10,1), 'min_samples_split':range(2,5,1)}
+gsearch2 = GridSearchCV(estimator = RandomForestClassifier(n_estimators= 60, 
+                                  min_samples_leaf=20,max_features='sqrt' ,oob_score=True, random_state=10),
+   param_grid = param_test2, scoring='roc_auc',iid=False, cv=5)
+gsearch2.fit(train_X,train_y)
+print(gsearch2.best_params_, gsearch2.best_score_)
+
+#{'max_depth': 4, 'min_samples_split': 2} 0.8510110994029553
+
+param_test3 = {'min_samples_split':range(2,5,1), 'min_samples_leaf':range(1,8,1)}
+gsearch3 = GridSearchCV(estimator = RandomForestClassifier(n_estimators= 60, max_depth=13,
+                                  max_features='sqrt' ,oob_score=True, random_state=10),
+   param_grid = param_test3, scoring='roc_auc',iid=False, cv=5)
+gsearch3.fit(train_X,train_y)
+print(gsearch3.best_params_, gsearch3.best_score_)
+
+#{'min_samples_leaf': 2, 'min_samples_split': 2} 0.8698206999012392
+
+from sklearn.model_selection import cross_val_score 
+model_rf = RandomForestClassifier(n_estimators = 70, max_depth = 4, min_samples_split = 2,
+                                  min_samples_leaf = 2)
+cross_val_score(model_rf, train_X, train_y, cv=7)
+
+model_rf = RandomForestClassifier(n_estimators = 120, max_depth = 8, min_samples_split = 2,
+                                  min_samples_leaf = 5)
+model_rf.fit(train_X,train_y)
+test_y = model_rf.predict(test_X)
+
+
+submission = pd.DataFrame({'PassengerId': test_df['PassengerId'],
+                            'Survived': test_y})
+submission.to_csv("submission.csv", index=False)
