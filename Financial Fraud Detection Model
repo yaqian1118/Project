@@ -1,0 +1,219 @@
+%% China's stock market is changing rapidly. Tight liquidity and more sensitive market conditions have exposed hidden risks of many companies. 
+%% Funds with more defaulted bonds suffer from bad returns. In contrast, funds that successfully get rid of defaulted bonds could easily outperform the market. 
+%% Therefore, this machine learning model is an useful attempt.
+
+% 当前分类错误的惩罚倍数是30倍，按照二级行业中性化
+% 如果需要改变惩罚倍数为50倍，for bb=1:29，将29改为49，也就是把造假公司数据复制49次
+
+
+eventyear=[2007:2017];
+%使用的的数据集是从2007:2017
+
+% 首先我们要提取运用年报财务数据计算的各种变量，以及是否因为造假受到处罚的情况
+for j=1:length(eventyear) 
+    cyear=eventyear(j);% 寻找每年的最后一个交易日
+    [~,yloc]=intersect(Tradedate,cellstr([num2str(cyear) ['/12/31']]));
+    if isempty(yloc)
+        [~,yloc]=intersect(Tradedate,cellstr([num2str(cyear) ['/12/30']]));
+    end
+    if isempty(yloc)
+        [~,yloc]=intersect(Tradedate,cellstr([num2str(cyear) ['/12/29']]));
+    end
+    yloc=yloc+3;% 每年最后一个交易日+3行近似看成第一个交易日
+    % 每一年的年报都是从后一年的1月1日开始填写，2018/01/01实际取到的是2017年报的数据
+    for i=1:length(Stocklist)
+        fdataset=[];
+        fdataset=[fdataset;acc_to_curasset(yloc,i);acct_zzl(yloc,i);acctrev_ratio(yloc,i);asset_zzl(yloc,i);cunhuo_ratio(yloc,i);cunhuo_zzl(yloc,i); curasset_ratio(yloc,i); curr_ratio(yloc,i); debt_ratio(yloc,i); maoli_ratio(yloc,i); money_ratio(yloc,i); jyxlj_yoy(yloc,i); holdpct(yloc,i);...
+            money_to_pro(yloc,i); money_to_rev(yloc,i);  yyprofit_yoy(yloc,i); otherrev_to_curasset(yloc,i); sudong_ratio(yloc,i);wuxing_ratio(yloc,i); TATA(yloc,i); outrev_to_pro(yloc,i); prepay_to_curasset(yloc,i); profit_ratio(yloc,i); profit_yoy(yloc,i); rev_to_pro(yloc,i); rev_yoy(yloc,i); salemaoli_ratio(yloc,i); ...
+            ROE(yloc,i); ROA(yloc,i); ROA_yoy(yloc,i); PreNI(yloc,i); AuditOpinion(yloc,i)];
+
+       % 注意PreNI和AuditOpinion是01变量，不进行归一化，所以这两个指标必须在最后2行
+       % 加新变量一定放在他们之前
+        savedata{j,i}=fdataset; % savedata这个cell用于保存学习用的自变量
+    end
+end
+
+% 现在要处理学习集的数据，我们以2007~2016年报的数据为学习集
+
+for j=1:length(eventyear)-1 %减1就是2007-2016
+    cyear=eventyear(j);
+    fDeregulation=[];
+    dyear=eventyear(j+1);
+    [~,yloc1]=intersect(Tradedate,cellstr([num2str(cyear) ['/12/31']]));
+    if isempty(yloc1)
+        [~,yloc1]=intersect(Tradedate,cellstr([num2str(cyear) ['/12/30']]));
+    end
+    if isempty(yloc1)
+        [~,yloc1]=intersect(Tradedate,cellstr([num2str(cyear) ['/12/29']]));
+    end
+    yloc1=yloc1+3;%年底+3天就2008-2017年初，也就是2007年报~2016年年报，原始数据集本身的问题
+    for i=1:length(Stocklist)
+        fDeregulation=[fDeregulation;Deregulation(yloc1,i)]; %该交易日是否造假信息合成3501*1
+    end
+    FDeregulation{j}=fDeregulation; % 把造假与否的01变量保存在FDeregulaton这个cell
+end
+finput=[];
+foutpu=[];
+dd=[];
+for kk=1:length(eventyear)-1
+    testdata=[];
+    for kkk=1:length(savedata(kk,:)) %1~3501只个股
+        testdata=[testdata savedata{kk,kkk}];
+        %列合并在最右测，行是不同input，testdata最后是33个变量*3501只股票，保存的是第kk年3501只股票用于学习的自变量
+    end
+    testdata(isinf(testdata))=nan;% 部分财务变量可能存在inf的情况，换成空值
+    
+    iyear=eventyear(1,kk); %kk对应的年份，比如2008
+    [~,timeloc]=intersect(Tradedate,cellstr([num2str(iyear) ['/12/31']]));
+    if isempty(timeloc)
+        [~,timeloc]=intersect(Tradedate,cellstr([num2str(iyear) ['/12/30']]));
+    end
+    if isempty(timeloc)
+        [~,timeloc]=intersect(Tradedate,cellstr([num2str(iyear) ['/12/29']]));
+    end
+    timeloc=timeloc+3; %查找现在是用的第几天的截面数据，我们要寻找这一天各个股票所属行业的情况
+    
+    for kkk=1:83 % 按照中信二级行业83个进行归一化，同一个二级行业的数据归一到[0,1]
+        tempindus=find(StockIndusnum_Citic2(timeloc,:)==kkk);% 提取出中信二级行业为kkk的所有股票
+        if length(tempindus)>0
+        tempmatrix=testdata(:,tempindus); % 抽取出这些股票的自变量
+        tempmatrix=mapminmax(tempmatrix,0.1,1); %01变量做不做归一好像都OK
+        for k5=1:size(tempmatrix,1)-2 
+            tempmatrix(k5,:)= tempmatrix(k5,:)./nanmean(tempmatrix(k5,:)); % 一个近似z-score的处理
+        end
+        testdata(:,tempindus)=tempmatrix; 
+        end
+    end
+    
+    % 变量按行业归一化完成，接下来剔除33个变量不全的股票
+    
+    inputdate=testdata; %今年（第kk年）的自变量
+    outputdata1=FDeregulation{kk}; %今年（第kk年）的造假情况
+    fakeloc=find(outputdata1==1);
+    dd=[dd; fakeloc]; %出现财务造假的公司保存在dd，方便之后检查
+    
+    processdata=inputdate(:,fakeloc); % 有造假公司的input提取出来
+    processdata(isinf(processdata))=nan; % 把inf替换
+    mark=[];
+    for ff=1:length(fakeloc)
+        if sum(isnan(processdata(:,ff)))>0
+            mark=[mark ff]; %如果变量不全 纳入mark
+        end
+    end
+    fakeloc(mark)=[]; % 把被mark的有空值的造假股票从学习列表里剔除
+    
+    % 并不是所有数据都会被我们纳入学习集，只有当年造假的公司及其同行业的没有造假的公司
+    
+    sameinduslist=[]; % 用于保存和造假企业同行业公司在数据集里的位置
+    for mm=1:length(fakeloc)
+        fakestock=fakeloc(mm);
+        indus=StockIndusnum_Citic2(timeloc,fakestock); % 造假公司在那一年所属的二级行业
+        sameindus=find(StockIndusnum_Citic2(timeloc,:)==indus); % 寻找同行业公司
+        sameinduslist=[sameinduslist sameindus];
+    end
+   
+    outputdata=[ones(length(outputdata1),1)';ones(length(outputdata1),1)']; % 原本两行都是1
+    outputdata(2,fakeloc)=0;% 现在造假公司在第二行的位置被标为0
+    outputdata(1,setdiff(1:length(outputdata),fakeloc))=0; % 没造假的公司在第一列被标为0
+    
+    % 为了方便之后的处理 我得在inputdate和outputdata第一行插入1~3501，相当于是个标号
+    inputdate=[1:size(inputdate,2);inputdate];
+    outputdata=[1:size(outputdata,2);outputdata];
+ 
+        %只保留sameinduslist里面的股票自变量和因变量，也就是造假公司所属行业的那些公司
+    sameindusinput=inputdate(:,sameinduslist); %今年的自变量
+    sameindusoutput=outputdata(:,sameinduslist); %今年的造假情况
+    
+    %把造假股票的数据扩大到30倍（循环29次），试图解决不平衡的问题
+    fakeinput=inputdate(:,fakeloc);% 造假公司自变量
+    fakeoutput=outputdata(:,fakeloc);% 造假公司造假情况
+    for bb=1:29
+        sameindusinput=[sameindusinput fakeinput];
+        sameindusoutput=[sameindusoutput fakeoutput]; % 因为是n行一列，是按行合并
+    end
+  
+    [ddd,dddd]=find(isnan(sameindusinput)); % 返回有空值的行和列坐标，行和列各自可重复，组合起来确定坐标
+    del=unique(dddd); % del是有数据缺失的股票
+    % del=setdiff(del,fakeloc); 其实多此一举，有数据缺失和Inf的股票已经不再fakeloc里了
+    % inputdate(isnan(inputdate))=0; 没有用，不再使用inputdate
+    slist=Stocklist;
+    slist(unique(sameindusinput(1,del)))=[]; % slist最后没有用到
+    sameindusinput(:,del)=[];% 删除数据缺失的股票的所有数据
+    sameindusoutput(:,del)=[];
+
+    % 把sameindusinput&sameindusoutput的第一行（标号行删除）
+    sameindusinput(1,:)=[];
+    sameindusoutput(1,:)=[];
+    
+    finput=[finput sameindusinput];%七年的input总和 33*4790或更多
+    foutpu=[foutpu sameindusoutput];% outputdata是两行，第一行造假公司为1，第二行非造假公司为1
+end
+
+% 学习集准备好了，现在要准备测试集，也就是最后一年的数据
+
+ftestdata=[];
+for kkk=1:length(savedata(end,:)) %这个end是最后一年的Input，作为样本外
+    ftestdata=[ftestdata savedata{end,kkk}];
+end
+for kkk=1:83
+    tempindus=find(StockIndusnum_Citic2(yloc,:)==kkk);
+    tempmatrix=ftestdata(:,tempindus); % tempindus得到同一行业的股票位置
+    tempmatrix=mapminmax(tempmatrix,0.1,1); % 同一行业的股票做归一化，在0.1到1之间
+    for k5=1:size(tempmatrix,1)-2
+        tempmatrix(k5,:)= tempmatrix(k5,:)./nanmean(tempmatrix(k5,:)); % 还要再除以均值
+    end
+    ftestdata(:,tempindus)=tempmatrix; % 相当于同一行业的股票归一化、除均值后再塞回去
+end
+
+
+TrainX=finput';
+mark1=foutpu(1,:)'; %第一行造假为1
+fakenum=find(mark1==1);
+normalnum=find(mark1==0);
+mark1=num2cell(mark1);
+mark1(fakenum)={'fake'};
+mark1(normalnum)={'normal'};
+
+%%%================
+%训练集
+Train =TrainX;
+Test = mark1;
+
+ctree = ClassificationTree.fit(Train,Test);
+
+[k3,k4]=find(isnan(ftestdata));% 最后一年的测试集数据可还没删除空值
+X=ftestdata(:,setdiff(1:length(Stocklist),unique(k4)))';
+
+
+%仿真测试
+T_sim = predict(ctree,X);
+ss=Stocklist(setdiff(1:length(Stocklist),unique(k4)));
+char(ss(find(ismember(T_sim,'fake')))) % 字符串复制到excel会有一堆单引号
+%   
+% %%叶子节点含有的最小样本数对决策树性能的影响
+% leafs = logspace(0.1,1.5,10);
+% N = numel(leafs);
+% err = zeros(N,1);
+% for n = 1:N
+%     t = ClassificationTree.fit(Train,Test,'crossval','on','minleaf',leafs(n));
+%     err(n) = kfoldLoss(t);
+% end
+% plot(leafs,err);
+% xlabel('叶子节点含有的最小样本数');
+% ylabel('交叉验证误差');
+% title('叶子节点含有的最小样本数对决策树性能的影响')
+% 
+% %% 设置minleaf，产生优化决策树
+% OptimalTree = ClassificationTree.fit(Train,Test,'minleaf',1);
+% view(OptimalTree,'mode','graph')
+% 
+% % 计算剪枝后决策树的重采样误差和交叉验证误差
+% resubPrune = resubLoss(cptree)
+% lossPrune = kfoldLoss(crossval(cptree))
+% [k3,k4]=find(isnan(ftestdata));
+% X=ftestdata(:,setdiff(1:length(Stocklist),unique(k4)))';
+% Ynew = predict(OptimalTree,X);
+% 
+% ss=Stocklist(setdiff(1:length(Stocklist),unique(k4)));
+% char(ss(find(ismember(Ynew,'fake'))))
+% 
