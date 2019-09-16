@@ -1,4 +1,7 @@
-%% Internship Project
+% ### Editor: Yaqian Zhang ###
+% ### Last edited: 2018.10.23 ###
+% ### Summer Intern Project ###
+
 %% China's stock market is changing rapidly. liquidity issue and more sensitive market environment have exposed hidden risks of many companies. 
 %% Funds with more defaulted bonds suffer from bad returns. In contrast, funds that successfully get rid of defaulted bonds could easily outperform the market. 
 %% Therefore, this machine learning model is an useful attempt.
